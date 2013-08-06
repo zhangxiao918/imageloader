@@ -13,12 +13,14 @@ import android.os.Message;
 import android.os.StrictMode;
 import android.util.Log;
 import android.view.View;
+import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import com.bluestome.android.bean.ResultBean;
 import com.bluestome.android.cache.MemcacheClient;
 import com.bluestome.android.utils.HttpClientUtils;
+import com.bluestome.android.widget.TipDialog;
 import com.bluestome.imageloader.R;
 import com.bluestome.imageloader.biz.ParserBiz;
 import com.bluestome.imageloader.common.Constants;
@@ -42,6 +44,8 @@ public class LauncherActivity extends BaseActivity implements Initialization {
 
     private static final String TAG = LauncherActivity.class.getCanonicalName();
     private String content;
+    private String body;
+    private ImageView launcherImage;
     private TextView downCountText;
     private TextView contentTextView;
     private List<CacheStatus> list = new ArrayList<CacheStatus>(15);
@@ -64,6 +68,7 @@ public class LauncherActivity extends BaseActivity implements Initialization {
     }
 
     private MyHandler mHandler = new MyHandler(this);
+    // 倒计时值
     private int maxCount = 5;
 
     @Override
@@ -71,7 +76,6 @@ public class LauncherActivity extends BaseActivity implements Initialization {
         super.onCreate(savedInstanceState);
         pre();
         initView();
-        // initData();
         init();
     }
 
@@ -89,11 +93,8 @@ public class LauncherActivity extends BaseActivity implements Initialization {
         ProgressDialog dialog = null;
         switch (id) {
             case LOADING_NETWORK:
-                dialog = new ProgressDialog(this);
-                dialog.setTitle(null);
-                dialog.setMessage("网络连接中...");
+                dialog = new TipDialog(this, getString(R.string.network_connecting_tip));
                 dialog.setOnCancelListener(new OnCancelListener() {
-
                     @Override
                     public void onCancel(DialogInterface dialog) {
                         client.cancelRequests(LauncherActivity.this, true);
@@ -106,8 +107,15 @@ public class LauncherActivity extends BaseActivity implements Initialization {
 
     @Override
     public void init() {
-        mHandler.postDelayed(mRunnable, 1000 * 1L);
         mHandler.post(mInitCacheClient);
+        mHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                launcherImage.setVisibility(View.GONE);
+                downCountText.setVisibility(View.VISIBLE);
+                mHandler.postDelayed(mRunnable, 1000 * 1L);
+            }
+        }, 5 * 1000L);
     }
 
     private Runnable mRunnable = new Runnable() {
@@ -170,7 +178,12 @@ public class LauncherActivity extends BaseActivity implements Initialization {
                     String oldTxt = contentTextView.getText().toString();
                     contentTextView.setText(oldTxt + content);
                 }
-                initData();
+                mHandler.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        initData();
+                    }
+                }, 10 * 1000L);
             }
         }
     };
@@ -178,6 +191,7 @@ public class LauncherActivity extends BaseActivity implements Initialization {
     @Override
     public void initView() {
         setContentView(R.layout.activity_launch);
+        launcherImage = (ImageView) findViewById(R.id.lanuncher_image_id);
         downCountText = (TextView) findViewById(R.id.downcount_times_id);
         downCountText.setText(String.valueOf(maxCount));
         contentTextView = (TextView) findViewById(R.id.content_id);
@@ -190,8 +204,21 @@ public class LauncherActivity extends BaseActivity implements Initialization {
             @Override
             public void run() {
                 try {
-                    String content = HttpClientUtils.getResponseBody(Constants.URL);
-                    final ResultBean result = ParserBiz.indexHasPaging2(content);
+                    String key = "site_" + Constants.URL;
+                    if (null == cacheClient.get(key)) {
+                        Log.e(TAG, "get body from server");
+                        body = HttpClientUtils.getResponseBody(Constants.URL);
+                        cacheClient.add(key, body);
+                    } else {
+                        Log.e(TAG, "get body from cache");
+                        body = (String) cacheClient.get(key);
+                    }
+                    if (null == body) {
+                        Log.e(TAG, "get body from cache/server error, to get from server again");
+                        body = HttpClientUtils.getResponseBody(Constants.URL);
+                        cacheClient.add(key, body);
+                    }
+                    final ResultBean result = ParserBiz.indexHasPaging2(body);
                     if (result.isBool()) {
                         mHandler.post(new Runnable() {
                             @Override

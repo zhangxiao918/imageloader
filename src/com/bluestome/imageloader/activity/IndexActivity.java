@@ -2,7 +2,6 @@
 package com.bluestome.imageloader.activity;
 
 import android.app.Dialog;
-import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.DialogInterface.OnCancelListener;
@@ -31,6 +30,7 @@ import com.bluestome.android.bean.ResultBean;
 import com.bluestome.android.cache.MemcacheClient;
 import com.bluestome.android.utils.AsyncImageLoader;
 import com.bluestome.android.utils.StringUtil;
+import com.bluestome.android.widget.TipDialog;
 import com.bluestome.imageloader.R;
 import com.bluestome.imageloader.biz.ParserBiz;
 import com.bluestome.imageloader.common.Constants;
@@ -129,14 +129,11 @@ public class IndexActivity extends BaseActivity implements Initialization {
     @Override
     @Deprecated
     protected Dialog onCreateDialog(int id) {
-        ProgressDialog dialog = null;
+        Dialog dialog = null;
         switch (id) {
             case LOADING:
-                dialog = new ProgressDialog(this);
-                dialog.setTitle(null);
-                dialog.setMessage("数据正在加载中...");
+                dialog = new TipDialog(this, getString(R.string.data_loading));
                 dialog.setOnCancelListener(new OnCancelListener() {
-
                     @Override
                     public void onCancel(DialogInterface dialog) {
                         client.cancelRequests(IndexActivity.this, true);
@@ -144,9 +141,7 @@ public class IndexActivity extends BaseActivity implements Initialization {
                 });
                 return dialog;
             case INIT_CACHE:
-                dialog = new ProgressDialog(this);
-                dialog.setTitle(null);
-                dialog.setMessage("数据正在加载中...");
+                dialog = new TipDialog(this, getString(R.string.data_loading));
                 dialog.setOnCancelListener(new OnCancelListener() {
 
                     @Override
@@ -217,11 +212,12 @@ public class IndexActivity extends BaseActivity implements Initialization {
             public void onItemClick(AdapterView<?> adapter, View view, int position, long id) {
                 final ImageBean bean = (ImageBean) adapter.getItemAtPosition(position);
                 if (null != bean) {
-                    Intent i = new Intent();
-                    i.setClass(IndexActivity.this, GalleryActivity.class);
-                    i.putExtra("DETAIL_URL", bean.getDetailLink());
-                    i.putExtra("IMAGE_URL", bean.getImageUrl());
-                    startActivity(i);
+                    // Intent i = new Intent();
+                    // i.setClass(IndexActivity.this, GalleryActivity.class);
+                    // i.putExtra("DETAIL_URL", bean.getDetailLink());
+                    // i.putExtra("IMAGE_URL", bean.getImageUrl());
+                    // startActivity(i);
+                    Toast.makeText(getContext(), "该功能暂停服务", Toast.LENGTH_SHORT).show();
                 }
             }
         });
@@ -274,18 +270,20 @@ public class IndexActivity extends BaseActivity implements Initialization {
                             public void run() {
                                 try {
                                     List<ImageBean> lst = null;
+                                    String key = "index_list_" + count;
                                     if (null == cacheClient) {
                                         Log.e(TAG, "cacheClient is null");
                                         lst = ParserBiz
                                                 .getImageBeanList(content);
                                     } else {
-                                        if (null == cacheClient.get(url)) {
+                                        cacheClient.remove(key);
+                                        if (null == cacheClient.get(key)) {
                                             lst = ParserBiz
                                                     .getImageBeanList(content);
-                                            cacheClient.add(url, lst);
+                                            cacheClient.add(key, lst);
                                             Log.d(TAG, "add value to cache server");
                                         } else {
-                                            lst = (List<ImageBean>) cacheClient.get(url);
+                                            lst = (List<ImageBean>) cacheClient.get(key);
                                             Log.d(TAG, "get value from cache server");
                                         }
                                     }
@@ -297,7 +295,7 @@ public class IndexActivity extends BaseActivity implements Initialization {
                                             removeDialog(LOADING);
                                             if (null != lst2 && lst2.size() > 0) {
                                                 loadMoreView.setVisibility(View.VISIBLE);
-                                                Log.d(TAG, "获取首页的图片数据数量为:" + list.size());
+                                                Log.d(TAG, "获取首页的图片数据数量为:" + lst2.size());
                                                 adapter.addAllItems(lst2);
                                                 // 设置新数据的起始列位置
                                                 int pos = adapter.getCount() - lst2.size() - 1;
@@ -389,6 +387,8 @@ public class IndexActivity extends BaseActivity implements Initialization {
                 holder = new ViewHolder();
                 holder.image = (ImageView) convertView
                         .findViewById(R.id.item_image_id);
+                holder.hot = (ImageView) convertView
+                        .findViewById(R.id.item_image_hot_flag_id);
                 holder.title = (TextView) convertView
                         .findViewById(R.id.item_title_id);
                 holder.imageDesc = (TextView) convertView
@@ -397,30 +397,28 @@ public class IndexActivity extends BaseActivity implements Initialization {
             } else {
                 holder = (ViewHolder) convertView.getTag();
             }
-            if (list != null && list.size() > position) {
-                String key = "index_list_position_" + position;
-                ImageBean bean = null;
-                if (null != cacheClient) {
-                    if (null == cacheClient.get(key)) {
-                        bean = list.get(position);
-                        cacheClient.add(key, bean);
-                    } else {
-                        bean = (ImageBean) cacheClient.get(key);
-                    }
-                } else {
-                    bean = list.get(position);
-                }
 
+            if (list != null && list.size() > position) {
+                ImageBean bean = list.get(position);
                 if (null != bean) {
+                    if (position % 6 == 0) {
+                        holder.hot.setVisibility(View.VISIBLE);
+                    } else {
+                        holder.hot.setVisibility(View.INVISIBLE);
+                    }
                     final String url = bean.getImageUrl();
                     if (!StringUtil.isBlank(url)) {
                         // TODO 异步下载图片
-                        AsyncImageLoader imageLoader = new AsyncImageLoader(holder.image);
+                        AsyncImageLoader imageLoader = new
+                                AsyncImageLoader(holder.image);
                         imageLoader.execute(url);
                     }
                     holder.image.setImageResource(R.drawable.item_image_loading);
-                    holder.imageDesc.setText(Html.fromHtml(bean.getImageDesc()));
-                    holder.title.setText(bean.getTitle());
+                    holder.imageDesc
+                            .setText(Html.fromHtml(StringUtil.isBlank(bean.getImageDesc()) ? "描述:"
+                                    + System.currentTimeMillis() : bean.getImageDesc()));
+                    holder.title.setText(StringUtil.isBlank(bean.getTitle()) ? "标题:"
+                            + System.currentTimeMillis() : bean.getTitle());
                 }
             }
             return convertView;
@@ -447,6 +445,7 @@ public class IndexActivity extends BaseActivity implements Initialization {
 
         TextView title;
         ImageView image;
+        ImageView hot;
         TextView imageDesc;
         TextView screensize;
         TextView uploadTime;

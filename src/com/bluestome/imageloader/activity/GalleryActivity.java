@@ -12,7 +12,6 @@ import android.graphics.BitmapFactory;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
-import android.os.SystemClock;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
@@ -27,6 +26,7 @@ import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.Toast;
 
+import com.bluestome.android.cache.MemcacheClient;
 import com.bluestome.android.utils.AsyncImageLoader;
 import com.bluestome.android.utils.ImageUtils;
 import com.bluestome.android.utils.StringUtil;
@@ -83,6 +83,8 @@ public class GalleryActivity extends BaseActivity implements Initialization {
         link = i.getStringExtra("DETAIL_URL");
         smallImageUrl = i.getStringExtra("IMAGE_URL");
         Log.e(TAG, "子界面的地址：" + link);
+        mHandler.post(mInitCacheClient);
+        showDialog(LOADING_CACHE);
     }
 
     @Override
@@ -114,6 +116,7 @@ public class GalleryActivity extends BaseActivity implements Initialization {
                     final ImageBean bean = (ImageBean) parent.getItemAtPosition(position);
                     final String url = getDownloadImageStr(bean.getDetailLink());
                     currentImageUrl = url;
+                    imageView.setImageResource(R.drawable.item_image_loading);
                     imageView.post(new Runnable() {
                         @Override
                         public void run() {
@@ -169,8 +172,6 @@ public class GalleryActivity extends BaseActivity implements Initialization {
                                 }
                             }
                         }).start();
-                    } else {
-
                     }
                 }
             }
@@ -182,7 +183,7 @@ public class GalleryActivity extends BaseActivity implements Initialization {
     public void initData() {
         // TODO Auto-generated method stub
         if (!StringUtil.isBlank(link)) {
-            requestData(link);
+            requestData(link, false);
         }
     }
 
@@ -195,8 +196,28 @@ public class GalleryActivity extends BaseActivity implements Initialization {
         initData();
     }
 
+    private Runnable mInitCacheClient = new Runnable() {
+        private boolean isRun = true;
+
+        public void run() {
+            while (isRun) {
+                cacheClient = MemcacheClient.getInstance(getContext());
+                if (null != cacheClient) {
+                    isRun = false;
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            removeDialog(LOADING_CACHE);
+                        }
+                    });
+                }
+            }
+        }
+    };
+
     public static final int LOADING_LIST = 1001;
     public static final int LOADING_IMG = 1002;
+    public static final int LOADING_CACHE = 1003;
 
     @Override
     @Deprecated
@@ -227,6 +248,17 @@ public class GalleryActivity extends BaseActivity implements Initialization {
                     }
                 });
                 return dialog;
+            case LOADING_CACHE:
+                dialog = new ProgressDialog(this);
+                dialog.setTitle(null);
+                dialog.setMessage("正在加载缓存...");
+                dialog.setOnCancelListener(new OnCancelListener() {
+                    @Override
+                    public void onCancel(DialogInterface dialog) {
+                        client.cancelRequests(GalleryActivity.this, true);
+                    }
+                });
+                return dialog;
 
         }
         return super.onCreateDialog(id);
@@ -250,13 +282,6 @@ public class GalleryActivity extends BaseActivity implements Initialization {
 
         public ImageAdapter(Context ctx) {
             this.ctx = ctx;
-        }
-
-        /**
-         * @param datas the datas to set
-         */
-        public void setDatas(List<ImageBean> datas) {
-            this.datas = datas;
         }
 
         @Override
@@ -319,9 +344,11 @@ public class GalleryActivity extends BaseActivity implements Initialization {
         ImageView image;
     }
 
-    private void requestData(final String link) {
+    private void requestData(final String link, final boolean isRemote) {
         if (isLoad) {
-            showDialog(LOADING_LIST);
+            if (!isRemote) {
+                showDialog(LOADING_LIST);
+            }
             client.get(link, new AsyncHttpResponseHandler() {
 
                 @Override
@@ -329,16 +356,28 @@ public class GalleryActivity extends BaseActivity implements Initialization {
                     super.onSuccess(statusCode, content);
                     new Thread(new Runnable() {
                         public void run() {
-                            final List<ImageBean> iList = ParserBiz.getArticleImageList(content);
+                            List<ImageBean> iList = null;
+                            String key = "index_detail_" + link;
+                            cacheClient.remove(key);
+                            if (null == cacheClient.get(key)) {
+                                iList = ParserBiz.getArticleImageList(content);
+                                cacheClient.add(key, iList);
+                            } else {
+                                iList = (List<ImageBean>) cacheClient.get(key);
+                            }
+                            if (null == iList) {
+                                iList = ParserBiz.getArticleImageList(content);
+                            }
+                            final List<ImageBean> lst = iList;
                             runOnUiThread(new Runnable() {
                                 public void run() {
-                                    removeDialog(LOADING_LIST);
-                                    if (null != iList && iList.size() > 0) {
-                                        for (final ImageBean bean : iList) {
-                                            adapter.addAllItem(iList);
-                                        }
+                                    if (!isRemote) {
+                                        removeDialog(LOADING_LIST);
+                                    }
+                                    if (null != lst && lst.size() > 0) {
+                                        adapter.addAllItem(lst);
                                         page++;
-                                        getImagePageListThread.start();
+                                        mHandler.post(getNextImageListRunnable);
                                     } else {
                                         Toast.makeText(GalleryActivity.this, "获取数据失败!",
                                                 Toast.LENGTH_LONG)
@@ -426,53 +465,55 @@ public class GalleryActivity extends BaseActivity implements Initialization {
         }
     };
 
-    public Thread getImagePageListThread = new Thread() {
-
-        private boolean isRun = true;
-
+    public Runnable getNextImageListRunnable = new Runnable() {
         @Override
         public synchronized void run() {
-            while (isRun) {
-                final String url = link.replace("_1.html", "_" + page + ".html");
-                Log.d(TAG, "正在加载第" + page + "页,地址为:" + url);
-                client.get(url, new AsyncHttpResponseHandler() {
-
-                    @Override
-                    public void onSuccess(int statusCode, String content) {
-                        super.onSuccess(statusCode, content);
-                        if (statusCode == 200) {
-                            final List<ImageBean> iList = ParserBiz.getArticleImageList(content);
+            String tmp = getModifyUrl(link);
+            final String url = tmp + page + ".html";
+            Log.e(TAG, "正在加载第" + page + "页,地址为:" + url);
+            client.get(url, new AsyncHttpResponseHandler() {
+                @Override
+                public void onSuccess(final int statusCode, final String content) {
+                    super.onSuccess(statusCode, content);
+                    new Thread(new Runnable() {
+                        public void run() {
+                            List<ImageBean> iList = null;
+                            String key = "index_detail_" + link;
+                            cacheClient.remove(key);
+                            if (null == cacheClient.get(key)) {
+                                iList = ParserBiz.getArticleImageList(content);
+                                cacheClient.add(key, iList);
+                            } else {
+                                iList = (List<ImageBean>) cacheClient.get(key);
+                            }
+                            if (null == iList) {
+                                iList = ParserBiz.getArticleImageList(content);
+                            }
+                            final List<ImageBean> lst = iList;
                             runOnUiThread(new Runnable() {
                                 public void run() {
-                                    if (null != iList && iList.size() > 0) {
-                                        Log.d(TAG, url + ",分页数量:" + iList.size());
-                                        adapter.addAllItem(iList);
+                                    if (null != lst && lst.size() > 0) {
+                                        adapter.addAllItem(lst);
+                                        page++;
                                     }
                                 }
                             });
-                            SystemClock.sleep(1000L);
-                        } else {
-                            isRun = false;
-                            page = 1;
+                            if (page > 4) {
+                                page = 1;
+                                mHandler.removeCallbacks(this);
+                            } else {
+                                mHandler.postDelayed(this, 5 * 1000L);
+                            }
                         }
-                    }
-
-                    @Override
-                    public void onFailure(Throwable error, String content) {
-                        // TODO Auto-generated method stub
-                        super.onFailure(error, content);
-                        isRun = false;
-                        page = 1;
-                    }
-
-                });
-                if (page > 4) {
-                    page = 1;
-                    isRun = false;
-                } else {
-                    page++;
+                    }).start();
                 }
-            }
+
+                @Override
+                public void onFailure(final Throwable error, final String content) {
+                    super.onFailure(error, content);
+                    mHandler.removeCallbacks(getNextImageListRunnable);
+                }
+            });
         }
     };
 
@@ -493,5 +534,16 @@ public class GalleryActivity extends BaseActivity implements Initialization {
                 }
             });
         }
+    }
+
+    private String getModifyUrl(String url) {
+        int s = url.lastIndexOf(".");
+        String tmp = url.substring(0, s - 1);
+        Log.e(TAG, "修改地址:" + tmp);
+        return tmp;
+    }
+
+    private Context getContext() {
+        return this;
     }
 }
