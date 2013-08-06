@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:layout_marginBottom="6.66dip"
+    android:background="#FFFFFF" >
+
+    <ImageView
+        android:id="@+id/item_image_id"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentLeft="true"
+        android:layout_alignParentTop="true"
+        android:layout_margin="3.33dip"
+        android:src="@drawable/item_image_loading" />
+
+    <TextView
+        android:id="@+id/item_title_id"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_toRightOf="@id/item_image_id"
+        android:layout_alignTop="@id/item_image_id"
+        android:layout_alignBottom="@id/item_image_id"
+        android:layout_marginLeft="9.99dip"
+        android:gravity="left|center_vertical"
+        android:text="标题"
+        android:textSize="15sp"
+        android:visibility="visible" />
+
+    <TextView
+        android:id="@+id/item_image_desc_total_id"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignBottom="@+id/item_image_id"
+        android:layout_alignRight="@+id/item_title_id"
+        android:layout_alignTop="@+id/item_image_id"
+        android:layout_marginLeft="3.33dp"
+        android:layout_toRightOf="@+id/item_image_id"
+        android:gravity="left|center_vertical"
+        android:text=""
+        android:visibility="gone" />
+
+</RelativeLayout>
