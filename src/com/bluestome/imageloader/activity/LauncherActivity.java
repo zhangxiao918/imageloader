@@ -43,7 +43,6 @@ import java.util.Map;
 public class LauncherActivity extends BaseActivity implements Initialization {
 
     private static final String TAG = LauncherActivity.class.getCanonicalName();
-    private String content;
     private String body;
     private ImageView launcherImage;
     private TextView downCountText;
@@ -87,6 +86,7 @@ public class LauncherActivity extends BaseActivity implements Initialization {
 
     public static final int LOADING_NETWORK = 1001;
     public static final int LOADING_IMG = 1002;
+    public static final int PROCESSING = 1003;
 
     @Override
     protected Dialog onCreateDialog(int id) {
@@ -94,6 +94,15 @@ public class LauncherActivity extends BaseActivity implements Initialization {
         switch (id) {
             case LOADING_NETWORK:
                 dialog = new TipDialog(this, getString(R.string.network_connecting_tip));
+                dialog.setOnCancelListener(new OnCancelListener() {
+                    @Override
+                    public void onCancel(DialogInterface dialog) {
+                        client.cancelRequests(LauncherActivity.this, true);
+                    }
+                });
+                return dialog;
+            case PROCESSING:
+                dialog = new TipDialog(this, getString(R.string.processing));
                 dialog.setOnCancelListener(new OnCancelListener() {
                     @Override
                     public void onCancel(DialogInterface dialog) {
@@ -112,8 +121,9 @@ public class LauncherActivity extends BaseActivity implements Initialization {
             @Override
             public void run() {
                 launcherImage.setVisibility(View.GONE);
-                downCountText.setVisibility(View.VISIBLE);
-                mHandler.postDelayed(mRunnable, 1000 * 1L);
+                // downCountText.setVisibility(View.VISIBLE);
+                showDialog(PROCESSING);
+                mHandler.postDelayed(mRunnable, 1000 * 10L);
             }
         }, 5 * 1000L);
     }
@@ -127,11 +137,13 @@ public class LauncherActivity extends BaseActivity implements Initialization {
                 downCountText.setText(String.valueOf(maxCount));
                 mHandler.postDelayed(this, 1000 * 1L);
             } else {
+                removeDialog(PROCESSING);
                 maxCount = 10;
                 mHandler.removeCallbacks(this);
                 downCountText.setVisibility(View.GONE);
-                mHandler.post(mGetCacheStats);
-                contentTextView.setVisibility(View.VISIBLE);
+                // mHandler.post(mGetCacheStats);
+                // contentTextView.setVisibility(View.VISIBLE);
+                initData();
             }
         }
     };
@@ -150,7 +162,7 @@ public class LauncherActivity extends BaseActivity implements Initialization {
                 Iterator it = map.keySet().iterator();
                 while (null != it && it.hasNext()) {
                     String key = (String) it.next();
-                    contentTextView.setText(key + "\r\n");
+                    contentTextView.setText(key + "\r\n\r\n");
                     Map mMap = (Map) map.get(key);
                     Iterator mIt = mMap.keySet().iterator();
                     while (null != mIt && mIt.hasNext()) {
@@ -199,7 +211,6 @@ public class LauncherActivity extends BaseActivity implements Initialization {
 
     @Override
     public void initData() {
-        showDialog(LOADING_NETWORK);
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -223,7 +234,6 @@ public class LauncherActivity extends BaseActivity implements Initialization {
                         mHandler.post(new Runnable() {
                             @Override
                             public void run() {
-                                removeDialog(LOADING_NETWORK);
                                 Intent intent = new Intent();
                                 Bundle bundle = new Bundle();
                                 bundle.putSerializable("RESULT_INFO", result);
@@ -258,19 +268,6 @@ public class LauncherActivity extends BaseActivity implements Initialization {
                 }
             }
         }).start();
-        /*
-         * client.get(this, Constants.URL, null, new AsyncHttpResponseHandler()
-         * {
-         * @Override public void onSuccess(final String content) {
-         * runOnUiThread(new Runnable() {
-         * @Override public void run() { removeDialog(LOADING_NETWORK); } }); }
-         * @Override public void onFailure(final Throwable error, String
-         * content) { runOnUiThread(new Runnable() {
-         * @Override public void run() { removeDialog(LOADING_NETWORK);
-         * contentTextView.setText(error.getMessage() + "\r\n"); Log.e(TAG,
-         * error.getMessage()); } }); } });
-         */
-
     }
 
     protected Context getContext() {
@@ -284,12 +281,6 @@ public class LauncherActivity extends BaseActivity implements Initialization {
                 .detectNetwork() // or .detectAll() for all detectable problems
                 .penaltyLog()
                 .build());
-        // StrictMode.setVmPolicy(new StrictMode.VmPolicy.Builder()
-        // .detectLeakedSqlLiteObjects()
-        // .detectLeakedClosableObjects()
-        // .penaltyLog()
-        // .penaltyDeath()
-        // .build());
     }
 
     @Override
