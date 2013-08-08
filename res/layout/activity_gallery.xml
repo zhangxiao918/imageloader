@@ -9,7 +9,8 @@
         android:layout_width="fill_parent"
         android:layout_height="fill_parent"
         android:spacing="9.99dip"
-        android:visibility="visible" >
+        android:visibility="visible" 
+        android:cacheColorHint="#00000000">
     </Gallery>
 
     <include
