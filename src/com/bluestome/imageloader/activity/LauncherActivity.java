@@ -12,9 +12,6 @@ import android.os.Handler;
 import android.os.Message;
 import android.os.StrictMode;
 import android.util.Log;
-import android.view.View;
-import android.widget.ImageView;
-import android.widget.TextView;
 import android.widget.Toast;
 
 import com.bluestome.android.bean.ResultBean;
@@ -24,16 +21,8 @@ import com.bluestome.android.widget.TipDialog;
 import com.bluestome.imageloader.R;
 import com.bluestome.imageloader.biz.ParserBiz;
 import com.bluestome.imageloader.common.Constants;
-import com.bluestome.imageloader.domain.CacheStatus;
 
 import java.lang.ref.WeakReference;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 
 /**
  * 启动界面
@@ -44,10 +33,6 @@ public class LauncherActivity extends BaseActivity implements Initialization {
 
     private static final String TAG = LauncherActivity.class.getCanonicalName();
     private String body;
-    private ImageView launcherImage;
-    private TextView downCountText;
-    private TextView contentTextView;
-    private List<CacheStatus> list = new ArrayList<CacheStatus>(15);
 
     protected static class MyHandler extends Handler {
         private WeakReference<LauncherActivity> mActivity;
@@ -67,8 +52,6 @@ public class LauncherActivity extends BaseActivity implements Initialization {
     }
 
     private MyHandler mHandler = new MyHandler(this);
-    // 倒计时值
-    private int maxCount = 5;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -87,6 +70,7 @@ public class LauncherActivity extends BaseActivity implements Initialization {
     public static final int LOADING_NETWORK = 1001;
     public static final int LOADING_IMG = 1002;
     public static final int PROCESSING = 1003;
+    public static final int LOAD_IMAGE_LIST = 1004;
 
     @Override
     protected Dialog onCreateDialog(int id) {
@@ -110,6 +94,9 @@ public class LauncherActivity extends BaseActivity implements Initialization {
                     }
                 });
                 return dialog;
+            case LOAD_IMAGE_LIST:
+                dialog = new TipDialog(this, "正在在如图片列表...");
+                return dialog;
         }
         return super.onCreateDialog(id);
     }
@@ -117,85 +104,34 @@ public class LauncherActivity extends BaseActivity implements Initialization {
     @Override
     public void init() {
         mHandler.post(mInitCacheClient);
-        mHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                launcherImage.setVisibility(View.GONE);
-                // downCountText.setVisibility(View.VISIBLE);
-                showDialog(PROCESSING);
-                mHandler.postDelayed(mRunnable, 1000 * 10L);
-            }
-        }, 5 * 1000L);
     }
 
     private Runnable mRunnable = new Runnable() {
 
         @Override
         public void run() {
-            if (maxCount > 0) {
-                maxCount--;
-                downCountText.setText(String.valueOf(maxCount));
-                mHandler.postDelayed(this, 1000 * 1L);
-            } else {
-                removeDialog(PROCESSING);
-                maxCount = 10;
-                mHandler.removeCallbacks(this);
-                downCountText.setVisibility(View.GONE);
-                // mHandler.post(mGetCacheStats);
-                // contentTextView.setVisibility(View.VISIBLE);
-                initData();
-            }
+            removeDialog(PROCESSING);
+            mHandler.removeCallbacks(this);
+            showDialog(LOAD_IMAGE_LIST);
+            initData();
         }
     };
 
     private Runnable mInitCacheClient = new Runnable() {
         public void run() {
-            cacheClient = MemcacheClient.getInstance(getContext());
-        }
-    };
-
-    private Runnable mGetCacheStats = new Runnable() {
-        public void run() {
-            CacheStatus status = null;
-            if (null != cacheClient) {
-                Map map = cacheClient.getStats();
-                Iterator it = map.keySet().iterator();
-                while (null != it && it.hasNext()) {
-                    String key = (String) it.next();
-                    contentTextView.setText(key + "\r\n\r\n");
-                    Map mMap = (Map) map.get(key);
-                    Iterator mIt = mMap.keySet().iterator();
-                    while (null != mIt && mIt.hasNext()) {
-                        status = new CacheStatus();
-                        String mKey = (String) mIt.next();
-                        String mValue = (String) mMap.get(mKey);
-                        Log.e(TAG, mKey.toUpperCase(Locale.CHINA) + " = " + mValue);
-                        status.setName(mKey);
-                        status.setValue(mValue);
-                        list.add(status);
-
-                    }
-                }
-                Collections.sort(list, new Comparator<CacheStatus>() {
-                    @Override
-                    public int compare(CacheStatus lhs, CacheStatus rhs) {
-                        return lhs.getName().compareTo(rhs.getName());
-                    }
-                });
-
-                for (CacheStatus stats : list) {
-                    String content = null;
-                    content = stats.getName().toUpperCase(Locale.CHINA) + " : " + stats.getValue()
-                            + " \r\n";
-                    String oldTxt = contentTextView.getText().toString();
-                    contentTextView.setText(oldTxt + content);
-                }
+            if (null == cacheClient) {
+                cacheClient = MemcacheClient.getInstance(getContext());
+                mHandler.postDelayed(this, 1 * 1000L);
+            } else {
+                mHandler.removeCallbacks(this);
                 mHandler.postDelayed(new Runnable() {
                     @Override
                     public void run() {
-                        initData();
+                        showDialog(PROCESSING);
+                        mHandler.postDelayed(mRunnable, 1000 * 3L);
                     }
-                }, 10 * 1000L);
+                }, 5 * 1000L);
+
             }
         }
     };
@@ -203,10 +139,6 @@ public class LauncherActivity extends BaseActivity implements Initialization {
     @Override
     public void initView() {
         setContentView(R.layout.activity_launch);
-        launcherImage = (ImageView) findViewById(R.id.lanuncher_image_id);
-        downCountText = (TextView) findViewById(R.id.downcount_times_id);
-        downCountText.setText(String.valueOf(maxCount));
-        contentTextView = (TextView) findViewById(R.id.content_id);
     }
 
     @Override
@@ -234,6 +166,7 @@ public class LauncherActivity extends BaseActivity implements Initialization {
                         mHandler.post(new Runnable() {
                             @Override
                             public void run() {
+                                removeDialog(LOAD_IMAGE_LIST);
                                 Intent intent = new Intent();
                                 Bundle bundle = new Bundle();
                                 bundle.putSerializable("RESULT_INFO", result);
@@ -248,7 +181,7 @@ public class LauncherActivity extends BaseActivity implements Initialization {
                             @Override
                             public void run() {
                                 // TODO Auto-generated method stub
-                                removeDialog(LOADING_NETWORK);
+                                removeDialog(LOAD_IMAGE_LIST);
                             }
                         });
                         Log.e(TAG, "没有分页数据");
@@ -259,7 +192,7 @@ public class LauncherActivity extends BaseActivity implements Initialization {
 
                         @Override
                         public void run() {
-                            removeDialog(LOADING_NETWORK);
+                            removeDialog(LOAD_IMAGE_LIST);
                             String tip = "解析首页分页数据异常," + e.getMessage();
                             Toast.makeText(LauncherActivity.this, tip,
                                     Toast.LENGTH_LONG).show();
