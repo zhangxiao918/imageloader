@@ -3,18 +3,11 @@
     android:layout_width="fill_parent"
     android:layout_height="fill_parent"
     android:orientation="vertical" >
-
-    <Gallery
+    <ListView
         android:id="@+id/gallery"
         android:layout_width="fill_parent"
         android:layout_height="fill_parent"
-        android:spacing="9.99dip"
-        android:visibility="visible" 
-        android:cacheColorHint="#00000000">
-    </Gallery>
-
-    <include
-        android:id="@+id/gallery_detail_area"
-        layout="@layout/item_detail_image" />
-
+        android:gravity="center_vertical|center_horizontal"
+        android:numColumns="1"
+        android:listSelector="#00000000"/>
 </LinearLayout>
