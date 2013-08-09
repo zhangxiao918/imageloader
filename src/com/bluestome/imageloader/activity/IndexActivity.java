@@ -19,7 +19,6 @@ import android.widget.AbsListView.OnScrollListener;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemClickListener;
 import android.widget.BaseAdapter;
-import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.TextView;
@@ -40,7 +39,7 @@ import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
 
-public class IndexActivity extends BaseActivity implements Initialization {
+public class IndexActivity extends BaseActivity implements Initialization, OnScrollListener {
 
     private static final String TAG = IndexActivity.class.getCanonicalName();
     private ListView indexImageList;
@@ -48,11 +47,14 @@ public class IndexActivity extends BaseActivity implements Initialization {
     private ItemAdapter adapter = new ItemAdapter(null);
     private ResultBean result = null;
 
-    private View loadMoreView;
-    private Button loadMoreButton;
-
     private int count = 1;
     private MemcacheClient cacheClient;
+
+    private int visibleLastIndex = 0; // 最后的可视项索引
+    private int visibleItemCount; // 当前窗口可见项总数
+
+    // 页码
+    private int page = 1;
 
     private static class MyHandler extends Handler {
         private WeakReference<IndexActivity> mActivity;
@@ -177,35 +179,9 @@ public class IndexActivity extends BaseActivity implements Initialization {
     @Override
     public void initView() {
         setContentView(R.layout.activity_index);
-        loadMoreView = getLayoutInflater().inflate(R.layout.loadmore, null);
-        loadMoreButton = (Button) loadMoreView.findViewById(R.id.loadMoreButton);
-        loadMoreButton.setOnClickListener(new View.OnClickListener() {
-
-            @Override
-            public void onClick(View v) {
-                loadMoreButton.setText("正在加载中..."); // 设置按钮文字
-                mHandler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        loadMoreData();
-                    }
-                });
-
-            }
-        });
         indexImageList = (ListView) findViewById(R.id.index_image_list_id);
-        indexImageList.addFooterView(loadMoreView); // 设置列表底部视图
         indexImageList.setOnItemClickListener(mIndexClickListener);
-        indexImageList.setOnScrollListener(new OnScrollListener() {
-            @Override
-            public void onScrollStateChanged(AbsListView view, int scrollState) {
-            }
-
-            @Override
-            public void onScroll(AbsListView view, int firstVisibleItem, int visibleItemCount,
-                    int totalItemCount) {
-            }
-        });
+        indexImageList.setOnScrollListener(this);
         adapter = new ItemAdapter(null);
         indexImageList.setAdapter(adapter);
     }
@@ -267,21 +243,23 @@ public class IndexActivity extends BaseActivity implements Initialization {
                                         @Override
                                         public void run() {
                                             removeDialog(LOADING);
+                                            indexImageList.setEnabled(true);
                                             if (null != lst2 && lst2.size() > 0) {
-                                                loadMoreView.setVisibility(View.VISIBLE);
-                                                Log.d(TAG, "获取首页的图片数据数量为:" + lst2.size());
                                                 adapter.addAllItems(lst2);
+                                                adapter.notifyDataSetChanged();
                                                 // 设置新数据的起始列位置
-                                                int pos = adapter.getCount() - lst2.size();
+                                                int pos = adapter.getCount() - lst2.size() - 1;
+                                                Log.e(TAG, "刷新后焦点的位置：" + pos);
                                                 if (pos > 0) {
                                                     indexImageList.setSelection(pos);
                                                 } else {
                                                     indexImageList.setSelection(0);
                                                 }
+                                                Log.d(TAG, "获取首页的图片数据数量为:" + lst2.size() + ",列表总数"
+                                                        + adapter.getCount());
                                             } else {
                                                 Log.e(TAG, "没有获取到首页图片数据");
                                             }
-                                            loadMoreButton.setText("查看更多..."); // 恢复按钮文字
                                         }
                                     });
                                 } catch (final Exception e) {
@@ -299,6 +277,7 @@ public class IndexActivity extends BaseActivity implements Initialization {
                         mHandler.post(new Runnable() {
                             @Override
                             public void run() {
+                                indexImageList.setEnabled(true);
                                 error.printStackTrace();
                                 Toast.makeText(IndexActivity.this, "获取图片列表失败!", Toast.LENGTH_LONG)
                                         .show();
@@ -424,7 +403,41 @@ public class IndexActivity extends BaseActivity implements Initialization {
         TextView uploadTime;
     }
 
-    private Context getContext() {
-        return this;
+    private boolean mBusy = false; // 滚动中
+
+    @Override
+    public void onScrollStateChanged(AbsListView view, int scrollState) {
+        int itemsLastIndex = adapter.getCount() - 1; // 数据集最后一项的索引
+        int lastIndex = itemsLastIndex;
+
+        switch (scrollState) {
+            case OnScrollListener.SCROLL_STATE_IDLE:
+                mBusy = false;
+                if (!mBusy && visibleLastIndex == lastIndex) {
+                    indexImageList.setEnabled(false);
+                    Log.d(TAG, "自动载入下一页...");
+                    // TODO 载入下一页
+                    mHandler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            initData();
+                        }
+                    }, 1 * 250L);
+                }
+                break;
+            case OnScrollListener.SCROLL_STATE_TOUCH_SCROLL:
+                mBusy = true;
+                break;
+            case OnScrollListener.SCROLL_STATE_FLING:
+                mBusy = true;
+                break;
+        }
+    }
+
+    @Override
+    public void onScroll(AbsListView view, int firstVisibleItem,
+            int visibleItemCount, int totalItemCount) {
+        this.visibleItemCount = visibleItemCount;
+        visibleLastIndex = firstVisibleItem + visibleItemCount - 1;
     }
 }

@@ -6,55 +6,47 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.DialogInterface.OnCancelListener;
 import android.content.Intent;
-import android.graphics.Bitmap;
-import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
 import android.view.LayoutInflater;
-import android.view.MotionEvent;
 import android.view.View;
-import android.view.View.OnTouchListener;
 import android.view.ViewGroup;
+import android.widget.AbsListView;
+import android.widget.AbsListView.OnScrollListener;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemClickListener;
 import android.widget.BaseAdapter;
-import android.widget.Gallery;
-import android.widget.ImageButton;
 import android.widget.ImageView;
+import android.widget.ListView;
 import android.widget.Toast;
 
 import com.bluestome.android.cache.MemcacheClient;
 import com.bluestome.android.utils.AsyncImageLoader;
-import com.bluestome.android.utils.ImageUtils;
 import com.bluestome.android.utils.StringUtil;
 import com.bluestome.android.widget.TipDialog;
-import com.bluestome.android.widget.ToastUtil;
 import com.bluestome.imageloader.R;
 import com.bluestome.imageloader.biz.ParserBiz;
 import com.bluestome.imageloader.common.Constants;
 import com.bluestome.imageloader.domain.ImageBean;
 import com.loopj.android.http.AsyncHttpResponseHandler;
 
-import java.io.File;
 import java.lang.ref.WeakReference;
 import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
 
-public class GalleryActivity extends BaseActivity implements Initialization {
+public class GalleryActivity extends BaseActivity implements Initialization, OnScrollListener {
 
     private static final String TAG = GalleryActivity.class.getCanonicalName();
-    private ImageAdapter adapter = new ImageAdapter(this);
+    private ImageAdapter adapter = new ImageAdapter(null);
     private String link = null;
-    private ImageView imageView;
-    private View detailImageView;
-    private Gallery g;
+    private ListView gridView;
     private boolean isLoad = true;
-    private Bitmap bigMap;
-    private String currentImageUrl = null;
-    private String smallImageUrl = null;
+
+    private int visibleLastIndex = 0; // 最后的可视项索引
+    private int visibleItemCount; // 当前窗口可见项总数
 
     // 页码
     private int page = 1;
@@ -82,7 +74,6 @@ public class GalleryActivity extends BaseActivity implements Initialization {
     public void init() {
         Intent i = getIntent();
         link = i.getStringExtra("DETAIL_URL");
-        smallImageUrl = i.getStringExtra("IMAGE_URL");
         Log.e(TAG, "子界面的地址：" + link);
         mHandler.post(mInitCacheClient);
         showDialog(LOADING_CACHE);
@@ -91,73 +82,26 @@ public class GalleryActivity extends BaseActivity implements Initialization {
     @Override
     public void initView() {
         setContentView(R.layout.activity_gallery);
-        detailImageView = findViewById(R.id.gallery_detail_area);
-        detailImageView.setOnTouchListener(new OnTouchListener() {
+        gridView = (ListView) findViewById(R.id.gallery);
+        gridView.setAdapter(adapter);
+        gridView.setOnScrollListener(this);
+        gridView.setOnItemClickListener(new OnItemClickListener() {
 
             @Override
-            public boolean onTouch(View v, MotionEvent event) {
-                ImageButton close = (ImageButton) v.findViewById(R.id.gallery_image_close_id);
-                close.setVisibility(View.VISIBLE);
-                ImageButton download = (ImageButton) v.findViewById(R.id.gallery_image_download_id);
-                download.setVisibility(View.VISIBLE);
-                ImageButton share = (ImageButton) detailImageView
-                        .findViewById(R.id.gallery_image_share_id);
-                share.setVisibility(View.VISIBLE);
-                v.postDelayed(hiddenCloseRunnable, 5000L);
-                return true;
-            }
-        });
-        imageView = (ImageView) findViewById(R.id.gallery_image_id);
-        g = (Gallery) findViewById(R.id.gallery);
-        g.setAdapter(adapter);
-        // Set a item click listener, and just Toast the clicked position
-        g.setOnItemClickListener(new OnItemClickListener() {
-            public void onItemClick(final AdapterView parent, final View v, final int position,
-                    final long id) {
-                if (null != parent) {
-                    showDialog(DOWNLOAD_IMG);
-                    new Thread(new Runnable() {
-                        ImageBean bean = (ImageBean) parent.getItemAtPosition(position);
-                        String url = getDownloadImageStr(bean.getDetailLink());
+            public void onItemClick(AdapterView<?> adapter, View arg1, int position, long id) {
+                if (null != adapter && position > 0) {
+                    ImageBean imgBean = (ImageBean) adapter.getItemAtPosition(position);
+                    if (null != imgBean) {
+                        String url = getDownloadImageStr(imgBean.getDetailLink());
+                        Intent i = new Intent();
+                        i.setClass(GalleryActivity.this, BigImageActivity.class);
+                        i.putExtra("BIG_IMAGE_URL", url);
+                        startActivity(i);
 
-                        public void run() {
-                            mHandler.post(new Runnable() {
-                                @Override
-                                public void run() {
-                                    g.setVisibility(View.GONE);
-                                    currentImageUrl = url;
-                                    Log.e(TAG, "big image url:" + currentImageUrl);
-                                    byte[] body = ImageUtils.loadImageFromLocal(URLEncoder
-                                            .encode(url));
-                                    if (null == body) {
-                                        body = ImageUtils.loadImageFromServer(url);
-                                    }
-                                    if (null != body && body.length > 0) {
-                                        Log.e(TAG, "大图大小:" + body.length);
-                                        Bitmap bm = ImageUtils.decodeFile(body);
-                                        imageView.setImageBitmap(bm);
-                                        detailImageView
-                                                .postDelayed(hiddenCloseRunnable,
-                                                        5000L);
-                                        Log.e(TAG, "图片下载完成");
-                                        removeDialog(DOWNLOAD_IMG);
-                                        detailImageView.setVisibility(View.VISIBLE);
-                                    } else {
-                                        Log.e(TAG, "图片下载完成");
-                                        removeDialog(DOWNLOAD_IMG);
-                                        g.setVisibility(View.VISIBLE);
-                                        ToastUtil.resultNotify(getContext(),
-                                                Color.parseColor("#f52004"),
-                                                "下载图片失败");
-                                    }
-                                }
-                            });
-                        }
-                    }).start();
+                    }
                 }
             }
         });
-
     }
 
     @Override
@@ -229,7 +173,7 @@ public class GalleryActivity extends BaseActivity implements Initialization {
 
                     @Override
                     public void onCancel(DialogInterface dialog) {
-                        g.setVisibility(View.VISIBLE);
+                        gridView.setVisibility(View.VISIBLE);
                     }
                 });
                 return dialog;
@@ -253,7 +197,10 @@ public class GalleryActivity extends BaseActivity implements Initialization {
     private class ImageAdapter extends BaseAdapter {
         private List<ImageBean> datas = new ArrayList<ImageBean>(0);
 
-        public ImageAdapter(Context ctx) {
+        public ImageAdapter(List<ImageBean> list) {
+            if (null != list && list.size() > 0) {
+                this.datas = list;
+            }
         }
 
         @Override
@@ -279,7 +226,7 @@ public class GalleryActivity extends BaseActivity implements Initialization {
         }
 
         @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
+        public View getView(final int position, View convertView, ViewGroup parent) {
             LayoutInflater inflater = (LayoutInflater) GalleryActivity.this.getSystemService(
                     Context.LAYOUT_INFLATER_SERVICE);
             ViewHolder holder = null;
@@ -287,7 +234,7 @@ public class GalleryActivity extends BaseActivity implements Initialization {
                 convertView = inflater.inflate(R.layout.item_image, null);
                 holder = new ViewHolder();
                 holder.image = (ImageView) convertView.findViewById(R.id.item_image_id);
-                holder.image.setImageResource(R.drawable.item_image_loading);
+                holder.image.setBackgroundResource(R.drawable.item_image_loading);
                 convertView.setTag(holder);
             } else {
                 holder = (ViewHolder) convertView.getTag();
@@ -348,7 +295,9 @@ public class GalleryActivity extends BaseActivity implements Initialization {
                                         page = 2;
                                         adapter.addAllItem(lst);
                                         adapter.notifyDataSetChanged();
-                                        mHandler.postDelayed(getNextImageListRunnable, 3 * 1000L);
+                                        // mHandler.postDelayed(getNextImageListRunnable,
+                                        // 3 * 1000L);
+                                        removeDialog(LOADING_IMG);
                                     } else {
                                         Toast.makeText(GalleryActivity.this, "获取数据失败!",
                                                 Toast.LENGTH_LONG)
@@ -367,7 +316,6 @@ public class GalleryActivity extends BaseActivity implements Initialization {
                         public void run() {
                             removeDialog(LOADING_LIST);
                             isLoad = false;
-                            Log.e(TAG, content);
                             Toast.makeText(GalleryActivity.this,
                                     "出现错误:" + error.getMessage(),
                                     Toast.LENGTH_LONG).show();
@@ -377,44 +325,6 @@ public class GalleryActivity extends BaseActivity implements Initialization {
 
             });
         }
-    }
-
-    private void btnShow() {
-        ImageButton close = (ImageButton) detailImageView.findViewById(R.id.gallery_image_close_id);
-        close.setVisibility(View.VISIBLE);
-        ImageButton download = (ImageButton) detailImageView
-                .findViewById(R.id.gallery_image_download_id);
-        download.setVisibility(View.VISIBLE);
-    }
-
-    /**
-     * 关闭大图
-     * 
-     * @param view
-     */
-    public void close(View view) {
-        detailImageView.setVisibility(View.GONE);
-        g.setVisibility(View.VISIBLE);
-        mHandler.post(new Runnable() {
-            @Override
-            public void run() {
-                if (null != bigMap) {
-                    bigMap.recycle();
-                    imageView.setImageBitmap(null);
-                    Log.d(TAG, "图片资源回收");
-                }
-            }
-        });
-    }
-
-    /**
-     * 分享
-     * 
-     * @param view
-     */
-    public void share(View view) {
-        ToastUtil.resultNotify(getContext(), "分享");
-        return;
     }
 
     /**
@@ -431,103 +341,125 @@ public class GalleryActivity extends BaseActivity implements Initialization {
         return url;
     }
 
-    /**
-     * 隐藏关闭按钮
-     */
-    private Runnable hiddenCloseRunnable = new Runnable() {
+    private Runnable cancelGetNextImageListRunnable = new Runnable() {
+
         @Override
         public void run() {
-            ImageButton close = (ImageButton) detailImageView
-                    .findViewById(R.id.gallery_image_close_id);
-            close.setVisibility(View.INVISIBLE);
-            ImageButton download = (ImageButton) detailImageView
-                    .findViewById(R.id.gallery_image_download_id);
-            download.setVisibility(View.INVISIBLE);
-            ImageButton share = (ImageButton) detailImageView
-                    .findViewById(R.id.gallery_image_share_id);
-            share.setVisibility(View.INVISIBLE);
+            Log.e(TAG, "取消当前的下一页请求");
+            removeDialog(LOADING_IMG);
+            mHandler.removeCallbacks(getNextImageListRunnable);
+            client.cancelRequests(getContext(), true);
         }
     };
 
     public Runnable getNextImageListRunnable = new Runnable() {
         @Override
-        public synchronized void run() {
+        public void run() {
+            showDialog(LOADING_IMG);
             String tmp = getModifyUrl(link);
-            final String url = tmp + page + ".html";
-            Log.e(TAG, "正在加载第[getNextImageListRunnable]" + page + "页,地址为:" + url);
+            final String url = tmp + (page++) + ".html";
+            Log.e(TAG, "分页的参数:" + url);
+            mHandler.postDelayed(cancelGetNextImageListRunnable, 10 * 1000L);
             client.get(url, new AsyncHttpResponseHandler() {
                 @Override
                 public void onSuccess(final int statusCode, final String content) {
-                    super.onSuccess(statusCode, content);
-
-                    List<ImageBean> iList = null;
-                    String key = "index_detail_list_" + URLEncoder.encode(url);
-                    Log.e(TAG, "缓存KEY:" + key);
-                    if (null == cacheClient.get(key)) {
-                        iList = ParserBiz.getArticleImageList(content);
-                        cacheClient.add(key, iList);
-                    } else {
-                        iList = (List<ImageBean>) cacheClient.get(key);
-                    }
-                    if (null == iList) {
-                        iList = ParserBiz.getArticleImageList(content);
-                    }
-                    final List<ImageBean> lst = iList;
-                    runOnUiThread(new Runnable() {
+                    Log.e(TAG, "获取内容成功,statusCode" + statusCode);
+                    new Thread(new Runnable() {
+                        @Override
                         public void run() {
-                            if (null != lst && lst.size() > 0) {
-                                adapter.addAllItem(lst);
+                            mHandler.removeCallbacks(cancelGetNextImageListRunnable);
+                            if (StringUtil.isBlank(content)) {
+                                Log.e(TAG, "内容为空");
+                                removeDialog(LOADING_IMG);
+                                mHandler.removeCallbacks(getNextImageListRunnable);
+                                mBusy = true;
+                                return;
                             }
+                            List<ImageBean> iList = null;
+                            String key = "index_detail_list_" + URLEncoder.encode(url);
+                            if (null == cacheClient.get(key)) {
+                                iList = ParserBiz.getArticleImageList(content);
+                                cacheClient.add(key, iList);
+                            } else {
+                                iList = (List<ImageBean>) cacheClient.get(key);
+                            }
+                            if (null == iList) {
+                                iList = ParserBiz.getArticleImageList(content);
+                                cacheClient.add(key, iList);
+                            }
+                            final List<ImageBean> lst = iList;
+                            mHandler.post(new Runnable() {
+                                public void run() {
+                                    removeDialog(LOADING_IMG);
+                                    gridView.setEnabled(true);
+                                    if (null != lst && lst.size() > 0) {
+                                        adapter.addAllItem(lst);
+                                        adapter.notifyDataSetChanged();
+                                        int pos = adapter.getCount() - lst.size() - 1;
+                                        if (pos < 0) {
+                                            pos = 0;
+                                        }
+                                        Log.e(TAG, "图片最新位置:" + pos);
+                                        gridView.setSelection(pos);
+
+                                    }
+                                }
+                            });
                         }
-                    });
-                    if (page >= 4) {
-                        removeDialog(LOADING_IMG);
-                        page = 1;
-                        mHandler.removeCallbacks(getNextImageListRunnable);
-                        adapter.notifyDataSetChanged();
-                    } else {
-                        Log.e(TAG, "\t分页参数:page:" + page);
-                        Log.e(TAG, "分页地址:" + url);
-                        page++;
-                        mHandler.post(getNextImageListRunnable);
-                    }
+                    }).start();
                 }
 
                 @Override
                 public void onFailure(final Throwable error, final String content) {
-                    super.onFailure(error, content);
-                    page = 2;
+                    Log.e(TAG, "获取内容失败,error" + error.getMessage());
+                    gridView.setEnabled(true);
                     mHandler.removeCallbacks(getNextImageListRunnable);
+                    removeDialog(LOADING_IMG);
+                    Toast.makeText(GalleryActivity.this, "分页异常:" + error.getMessage(),
+                            Toast.LENGTH_LONG)
+                            .show();
                 }
             });
         }
     };
 
-    /**
-     * 下载操作
-     * 
-     * @param view
-     */
-    public void download(View view) {
-        if (null != currentImageUrl) {
-            mHandler.post(new Runnable() {
-                public void run() {
-                    ToastUtil.resultNotify(GalleryActivity.this,
-                            "图片已保存在:" + ImageUtils.IMAGE_PATH + File.separator
-                                    + URLEncoder.encode(currentImageUrl));
+    private boolean mBusy = false; // 滚动中
+
+    @Override
+    public void onScrollStateChanged(AbsListView view, int scrollState) {
+        int itemsLastIndex = adapter.getCount() - 1; // 数据集最后一项的索引
+        int lastIndex = itemsLastIndex;
+
+        switch (scrollState) {
+            case OnScrollListener.SCROLL_STATE_IDLE:
+                mBusy = false;
+                if (!mBusy && visibleLastIndex == lastIndex) {
+                    Log.e(TAG, "执行分页操作");
+                    gridView.setEnabled(false);
+                    // TODO 载入下一页
+                    mHandler.postDelayed(getNextImageListRunnable, 1 * 250L);
                 }
-            });
+                break;
+            case OnScrollListener.SCROLL_STATE_TOUCH_SCROLL:
+                mBusy = true;
+                break;
+            case OnScrollListener.SCROLL_STATE_FLING:
+                mBusy = true;
+                break;
         }
+    }
+
+    @Override
+    public void onScroll(AbsListView view, int firstVisibleItem,
+            int visibleItemCount, int totalItemCount) {
+        this.visibleItemCount = visibleItemCount;
+        visibleLastIndex = firstVisibleItem + visibleItemCount - 1;
     }
 
     private String getModifyUrl(String url) {
         int s = url.lastIndexOf(".");
         String tmp = url.substring(0, s - 1);
-        Log.e(TAG, "修改地址:" + tmp);
         return tmp;
     }
 
-    private Context getContext() {
-        return this;
-    }
 }

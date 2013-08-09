@@ -2,6 +2,7 @@
 package com.bluestome.imageloader.activity;
 
 import android.app.Activity;
+import android.content.Context;
 import android.os.Bundle;
 
 import com.bluestome.android.cache.MemcacheClient;
@@ -39,6 +40,10 @@ public class BaseActivity extends Activity {
     protected void onResume() {
         // TODO Auto-generated method stub
         super.onResume();
+    }
+
+    protected Context getContext() {
+        return this;
     }
 
 }

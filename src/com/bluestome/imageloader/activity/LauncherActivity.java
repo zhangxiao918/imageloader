@@ -95,7 +95,7 @@ public class LauncherActivity extends BaseActivity implements Initialization {
                 });
                 return dialog;
             case LOAD_IMAGE_LIST:
-                dialog = new TipDialog(this, "正在在如图片列表...");
+                dialog = new TipDialog(this, "正在载入图片列表...");
                 return dialog;
         }
         return super.onCreateDialog(id);
@@ -130,7 +130,7 @@ public class LauncherActivity extends BaseActivity implements Initialization {
                         showDialog(PROCESSING);
                         mHandler.postDelayed(mRunnable, 1000 * 3L);
                     }
-                }, 5 * 1000L);
+                }, 1 * 1000L);
 
             }
         }
