@@ -3,19 +3,18 @@ package com.bluestome.imageloader.activity;
 
 import android.app.Dialog;
 import android.content.Context;
-import android.content.DialogInterface;
-import android.content.DialogInterface.OnCancelListener;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.Color;
+import android.graphics.drawable.BitmapDrawable;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Message;
-import android.text.Html;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AbsListView;
 import android.widget.AbsListView.OnScrollListener;
+import android.widget.AbsListView.RecyclerListener;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemClickListener;
 import android.widget.BaseAdapter;
@@ -24,18 +23,21 @@ import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.bluestome.android.bean.ResultBean;
 import com.bluestome.android.cache.MemcacheClient;
 import com.bluestome.android.utils.AsyncImageLoader;
+import com.bluestome.android.utils.DateUtils;
 import com.bluestome.android.utils.StringUtil;
 import com.bluestome.android.widget.TipDialog;
+import com.bluestome.android.widget.ToastUtil;
 import com.bluestome.imageloader.R;
 import com.bluestome.imageloader.biz.ParserBiz;
 import com.bluestome.imageloader.common.Constants;
+import com.bluestome.imageloader.db.dao.IArticleDao;
+import com.bluestome.imageloader.domain.ArticleBean;
 import com.bluestome.imageloader.domain.ImageBean;
 import com.loopj.android.http.AsyncHttpResponseHandler;
 
-import java.lang.ref.WeakReference;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -45,10 +47,11 @@ public class IndexActivity extends BaseActivity implements Initialization, OnScr
     private ListView indexImageList;
     private List<ImageBean> list = new ArrayList<ImageBean>();
     private ItemAdapter adapter = new ItemAdapter(null);
-    private ResultBean result = null;
 
     private int count = 1;
     private MemcacheClient cacheClient;
+
+    private IArticleDao articleDAO;
 
     private int visibleLastIndex = 0; // 最后的可视项索引
     private int visibleItemCount; // 当前窗口可见项总数
@@ -56,55 +59,16 @@ public class IndexActivity extends BaseActivity implements Initialization, OnScr
     // 页码
     private int page = 1;
 
-    private static class MyHandler extends Handler {
-        private WeakReference<IndexActivity> mActivity;
-
-        public MyHandler(IndexActivity activity) {
-            mActivity = new WeakReference<IndexActivity>(activity);
-        }
-
-        @Override
-        public void handleMessage(Message msg) {
-            IndexActivity activity = mActivity.get();
-            if (null != activity) {
-                super.handleMessage(msg);
-            }
-        }
-
-    }
-
-    private MyHandler mHandler = new MyHandler(this);
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         // TODO Auto-generated method stub
         super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_index);
         pre();
-        // TODO 如果缓存为空，则需要执行初始化缓存工作
-        mHandler.post(mInitCacheClient);
     }
 
     private void pre() {
-        Intent intent = getIntent();
-        result = (ResultBean) intent.getSerializableExtra("RESULT_INFO");
-        if (null != cacheClient) {
-            initView();
-            initData();
-        }
     }
-
-    private Runnable mInitCacheClient = new Runnable() {
-        public void run() {
-            if (null == cacheClient) {
-                cacheClient = MemcacheClient.getInstance(getContext());
-                mHandler.postDelayed(this, 1 * 1000L);
-            } else {
-                mHandler.removeCallbacks(this);
-                initView();
-                initData();
-            }
-        }
-    };
 
     @Override
     protected void onDestroy() {
@@ -147,25 +111,8 @@ public class IndexActivity extends BaseActivity implements Initialization, OnScr
             case LOADING:
                 dialog = new TipDialog(this, getString(R.string.data_loading));
                 return dialog;
-            case INIT_CACHE:
-                dialog = new TipDialog(this, getString(R.string.data_loading));
-                dialog.setOnCancelListener(new OnCancelListener() {
-
-                    @Override
-                    public void onCancel(DialogInterface dialog) {
-                        mHandler.removeCallbacks(mInitCacheClient);
-                    }
-                });
-                return dialog;
             case INIT_ACTIVITY:
                 dialog = new TipDialog(this, getString(R.string.initializating));
-                dialog.setOnCancelListener(new OnCancelListener() {
-
-                    @Override
-                    public void onCancel(DialogInterface dialog) {
-                        mHandler.removeCallbacks(mInitCacheClient);
-                    }
-                });
                 return dialog;
             default:
                 return super.onCreateDialog(id);
@@ -178,11 +125,29 @@ public class IndexActivity extends BaseActivity implements Initialization, OnScr
 
     @Override
     public void initView() {
-        setContentView(R.layout.activity_index);
         indexImageList = (ListView) findViewById(R.id.index_image_list_id);
         indexImageList.setOnItemClickListener(mIndexClickListener);
         indexImageList.setOnScrollListener(this);
-        adapter = new ItemAdapter(null);
+        indexImageList.setRecyclerListener(new RecyclerListener() {
+            @Override
+            public void onMovedToScrapHeap(View view) {
+                View img = view
+                        .findViewById(R.id.item_image_id);
+                if (null != img && img instanceof ImageView) {
+                    Log.e(TAG, "准备回收图片内存");
+                    ImageView i = (ImageView) img;
+                    Bitmap bitmap = ((BitmapDrawable) i.getDrawable()).getBitmap();
+                    if (!bitmap.isMutable() && !bitmap.isRecycled()) {
+                        // bitmap.recycle();
+                        Log.e(TAG, "图片内存未回收,执行回收内存");
+                    }
+                }
+            }
+        });
+        List<ArticleBean> lst = articleDAO.find(count, 10);
+        Log.e(TAG, lst == null ? "数据库没有数据" : "数据库数据大小为:" + lst.size());
+        adapter = new ItemAdapter((lst == null || lst.size() == 0) ? null : lst);
+        adapter.notifyDataSetChanged();
         indexImageList.setAdapter(adapter);
     }
 
@@ -190,19 +155,13 @@ public class IndexActivity extends BaseActivity implements Initialization, OnScr
 
         @Override
         public void onItemClick(AdapterView<?> adapter, View view, int position, long id) {
-            final ImageBean bean = (ImageBean) adapter.getItemAtPosition(position);
+            final ArticleBean bean = (ArticleBean) adapter.getItemAtPosition(position);
             if (null != bean) {
                 Intent i = new Intent();
                 i.setClass(IndexActivity.this, GalleryActivity.class);
-                i.putExtra("DETAIL_URL", bean.getDetailLink());
-                i.putExtra("IMAGE_URL", bean.getImageUrl());
+                i.putExtra("DETAIL_URL", bean.getsURL());
+                i.putExtra("IMAGE_URL", bean.getThumbURL());
                 startActivity(i);
-                // if (position % new Random(adapter.getCount()).nextInt() == 0)
-                // {
-                // } else {
-                // Toast.makeText(getContext(), "该图片暂停详情浏览",
-                // Toast.LENGTH_SHORT).show();
-                // }
             }
         }
     };
@@ -210,7 +169,7 @@ public class IndexActivity extends BaseActivity implements Initialization, OnScr
     @Override
     public void initData() {
         showDialog(LOADING);
-        final String url = Constants.URL + "/index/" + count + ".html";
+        final String url = Constants.URL + "/index/" + (count++) + ".html";
         client.get(this, url, null,
                 new AsyncHttpResponseHandler() {
                     @Override
@@ -219,57 +178,54 @@ public class IndexActivity extends BaseActivity implements Initialization, OnScr
                             @Override
                             public void run() {
                                 try {
-                                    List<ImageBean> lst = null;
-                                    String key = "index_list_" + count;
-                                    if (null == cacheClient) {
-                                        Log.e(TAG, "cacheClient is null");
-                                        lst = ParserBiz
-                                                .getImageBeanList(content);
+                                    String key = "index_list_" + URLEncoder.encode(url);
+                                    List<ArticleBean> lst3 = getList(content, key, count);
+                                    final List<ArticleBean> lst2 = lst3;
+                                    if (null != lst2 && lst2.size() > 0) {
+                                        mHandler.post(new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                removeDialog(LOADING);
+                                                indexImageList.setEnabled(true);
+                                                if (null != lst2 && lst2.size() > 0) {
+                                                    adapter.addAllItems(lst2);
+                                                    adapter.notifyDataSetChanged();
+                                                    // 设置新数据的起始列位置
+                                                    int pos = adapter.getCount() - lst2.size() - 1;
+                                                    Log.e(TAG, "刷新后焦点的位置：" + pos);
+                                                    if (pos > 0) {
+                                                        indexImageList.setSelection(pos);
+                                                    } else {
+                                                        indexImageList.setSelection(0);
+                                                    }
+                                                    Log.d(TAG, "获取首页的图片数据数量为:" + lst2.size()
+                                                            + ",列表总数"
+                                                            + adapter.getCount());
+                                                } else {
+                                                    Log.e(TAG, "没有获取到首页图片数据");
+                                                }
+                                            }
+                                        });
                                     } else {
-                                        // cacheClient.remove(key);
-                                        if (null == cacheClient.get(key)) {
-                                            lst = ParserBiz
-                                                    .getImageBeanList(content);
-                                            cacheClient.add(key, lst);
-                                            Log.d(TAG, "add value to cache server");
-                                        } else {
-                                            lst = (List<ImageBean>) cacheClient.get(key);
-                                            Log.d(TAG, "get value from cache server");
-                                        }
+                                        ToastUtil.resultNotify(getContext(),
+                                                Color.parseColor("#fc0505"),
+                                                "没有获取到图片列表数据");
                                     }
-                                    final List<ImageBean> lst2 = lst;
+
+                                } catch (final Exception e) {
+                                    e.printStackTrace();
+                                    String tip = "解析首页分页数据异常," + e.getMessage();
+                                    Log.e(TAG, tip);
                                     mHandler.post(new Runnable() {
 
                                         @Override
                                         public void run() {
                                             removeDialog(LOADING);
-                                            indexImageList.setEnabled(true);
-                                            if (null != lst2 && lst2.size() > 0) {
-                                                adapter.addAllItems(lst2);
-                                                adapter.notifyDataSetChanged();
-                                                // 设置新数据的起始列位置
-                                                int pos = adapter.getCount() - lst2.size() - 1;
-                                                Log.e(TAG, "刷新后焦点的位置：" + pos);
-                                                if (pos > 0) {
-                                                    indexImageList.setSelection(pos);
-                                                } else {
-                                                    indexImageList.setSelection(0);
-                                                }
-                                                Log.d(TAG, "获取首页的图片数据数量为:" + lst2.size() + ",列表总数"
-                                                        + adapter.getCount());
-                                            } else {
-                                                Log.e(TAG, "没有获取到首页图片数据");
-                                            }
                                         }
                                     });
-                                } catch (final Exception e) {
-                                    e.printStackTrace();
-                                    String tip = "解析首页分页数据异常," + e.getMessage();
-                                    Log.e(TAG, tip);
                                 }
                             }
                         }).start();
-                        count++;
                     }
 
                     @Override
@@ -281,7 +237,6 @@ public class IndexActivity extends BaseActivity implements Initialization, OnScr
                                 error.printStackTrace();
                                 Toast.makeText(IndexActivity.this, "获取图片列表失败!", Toast.LENGTH_LONG)
                                         .show();
-                                finish();
                             }
                         });
                     }
@@ -290,19 +245,10 @@ public class IndexActivity extends BaseActivity implements Initialization, OnScr
 
     }
 
-    /**
-     * 加载更多数据
-     */
-    private void loadMoreData() {
-        int c = adapter.getCount();
-        Log.d(TAG, "适配器中的记录数量:" + c);
-        initData();
-    }
-
     public class ItemAdapter extends BaseAdapter {
-        private List<ImageBean> list = new ArrayList<ImageBean>(0);
+        private List<ArticleBean> list = new ArrayList<ArticleBean>(0);
 
-        public ItemAdapter(List<ImageBean> list) {
+        public ItemAdapter(List<ArticleBean> list) {
             if (null != list && list.size() > 0) {
                 this.list = list;
             }
@@ -340,7 +286,6 @@ public class IndexActivity extends BaseActivity implements Initialization, OnScr
                 holder = new ViewHolder();
                 holder.image = (ImageView) convertView
                         .findViewById(R.id.item_image_id);
-                // holder.image.setImageResource(R.drawable.item_image_loading);
                 holder.hot = (ImageView) convertView
                         .findViewById(R.id.item_image_hot_flag_id);
                 holder.title = (TextView) convertView
@@ -353,22 +298,19 @@ public class IndexActivity extends BaseActivity implements Initialization, OnScr
             }
 
             if (list != null && list.size() > position) {
-                ImageBean bean = list.get(position);
+                ArticleBean bean = list.get(position);
                 if (null != bean) {
                     if (position % 5 == 0) {
                         holder.hot.setVisibility(View.VISIBLE);
                     } else {
                         holder.hot.setVisibility(View.INVISIBLE);
                     }
-                    final String url = bean.getImageUrl();
+                    final String url = bean.getThumbURL();
                     if (!StringUtil.isBlank(url)) {
                         AsyncImageLoader imageLoader = new
                                 AsyncImageLoader(holder.image);
                         imageLoader.execute(url);
                     }
-                    holder.imageDesc
-                            .setText(Html.fromHtml(StringUtil.isBlank(bean.getImageDesc()) ? "描述:"
-                                    + System.currentTimeMillis() : bean.getImageDesc()));
                     holder.title.setText(StringUtil.isBlank(bean.getTitle()) ? "标题:"
                             + System.currentTimeMillis() : bean.getTitle());
                 }
@@ -381,12 +323,12 @@ public class IndexActivity extends BaseActivity implements Initialization, OnScr
          * 
          * @param bean
          */
-        public void addItem(ImageBean bean) {
+        public void addItem(ArticleBean bean) {
             list.add(bean);
             notifyDataSetChanged();
         }
 
-        public void addAllItems(List<ImageBean> tList) {
+        public void addAllItems(List<ArticleBean> tList) {
             list.addAll(tList);
             notifyDataSetChanged();
         }
@@ -439,5 +381,66 @@ public class IndexActivity extends BaseActivity implements Initialization, OnScr
             int visibleItemCount, int totalItemCount) {
         this.visibleItemCount = visibleItemCount;
         visibleLastIndex = firstVisibleItem + visibleItemCount - 1;
+    }
+
+    @Override
+    public void registerDestorySelfBroadcast() {
+        // TODO Auto-generated method stub
+
+    }
+
+    @Override
+    public void unRegisterDestorySelfBroadcast() {
+        // TODO Auto-generated method stub
+
+    }
+
+    /**
+     * 获取图片列表
+     * 
+     * @param content
+     * @param key
+     * @param page
+     * @return
+     */
+    private List<ArticleBean> getList(String content, String key, int page) {
+        List<ImageBean> lst = null;
+        List<ArticleBean> lst3 = new ArrayList<ArticleBean>(10);
+        if (null == cacheClient.get(key)) {
+            lst3 = articleDAO.find(page, 10);
+            if (null != lst3 && lst3.size() > 0) {
+                cacheClient.replace(key, lst3);
+                return lst3;
+            } else {
+                lst = ParserBiz
+                        .getImageBeanList(content);
+                Log.e(TAG, "从网站解析的数量为:" + lst.size());
+                if (null != lst && lst.size() > 0) {
+                    for (ImageBean bean : lst) {
+                        ArticleBean article = new ArticleBean();
+                        article.setTitle(bean.getTitle());
+                        article.setsURL(bean.getDetailLink());
+                        article.setThumbURL(bean.getImageUrl());
+                        article.setCreateTime(DateUtils.getNow());
+                        int result = articleDAO.insert(article);
+                        Log.e(TAG, "数据记录添加结果:" + result);
+                        if (result > 0) {
+                            article.setId(result);
+                            lst3.add(article);
+                        }
+                    }
+                    if (null != lst3 && lst3.size() > 0) {
+                        cacheClient.replace(key, lst3);
+                        Log.d(TAG, "add value to cache server");
+                        return lst3;
+                    }
+                }
+            }
+        } else {
+            lst3 = (List<ArticleBean>) cacheClient.get(key);
+            Log.d(TAG, "get value from cache server");
+            return lst3;
+        }
+        return null;
     }
 }

@@ -6,15 +6,16 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.DialogInterface.OnCancelListener;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.drawable.BitmapDrawable;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Message;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AbsListView;
 import android.widget.AbsListView.OnScrollListener;
+import android.widget.AbsListView.RecyclerListener;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemClickListener;
 import android.widget.BaseAdapter;
@@ -22,7 +23,6 @@ import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.Toast;
 
-import com.bluestome.android.cache.MemcacheClient;
 import com.bluestome.android.utils.AsyncImageLoader;
 import com.bluestome.android.utils.StringUtil;
 import com.bluestome.android.widget.TipDialog;
@@ -32,7 +32,6 @@ import com.bluestome.imageloader.common.Constants;
 import com.bluestome.imageloader.domain.ImageBean;
 import com.loopj.android.http.AsyncHttpResponseHandler;
 
-import java.lang.ref.WeakReference;
 import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
@@ -51,32 +50,11 @@ public class GalleryActivity extends BaseActivity implements Initialization, OnS
     // 页码
     private int page = 1;
 
-    public static class MyHandler extends Handler {
-        private WeakReference<GalleryActivity> mActivity;
-
-        public MyHandler(GalleryActivity activity) {
-            mActivity = new WeakReference<GalleryActivity>(activity);
-        }
-
-        @Override
-        public void handleMessage(Message msg) {
-            GalleryActivity activity = mActivity.get();
-            if (null != activity) {
-                super.handleMessage(msg);
-            }
-        }
-
-    }
-
-    private final MyHandler mHandler = new MyHandler(this);
-
     @Override
     public void init() {
         Intent i = getIntent();
         link = i.getStringExtra("DETAIL_URL");
         Log.e(TAG, "子界面的地址：" + link);
-        mHandler.post(mInitCacheClient);
-        showDialog(LOADING_CACHE);
     }
 
     @Override
@@ -102,6 +80,21 @@ public class GalleryActivity extends BaseActivity implements Initialization, OnS
                 }
             }
         });
+        gridView.setRecyclerListener(new RecyclerListener() {
+            @Override
+            public void onMovedToScrapHeap(View view) {
+                View sub = view.findViewById(R.id.item_image_id);
+                if (null != sub && sub instanceof ImageView) {
+                    Log.e(TAG, "准备回收内存");
+                    ImageView i = (ImageView) sub;
+                    Bitmap bitmap = ((BitmapDrawable) i.getDrawable()).getBitmap();
+                    if (!bitmap.isRecycled()) {
+                        // bitmap.recycle();
+                        Log.e(TAG, "图片内存未回收,执行回收内存");
+                    }
+                }
+            }
+        });
     }
 
     @Override
@@ -120,25 +113,6 @@ public class GalleryActivity extends BaseActivity implements Initialization, OnS
         initView();
         initData();
     }
-
-    private Runnable mInitCacheClient = new Runnable() {
-        private boolean isRun = true;
-
-        public void run() {
-            while (isRun) {
-                cacheClient = MemcacheClient.getInstance(getContext());
-                if (null != cacheClient) {
-                    isRun = false;
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            removeDialog(LOADING_CACHE);
-                        }
-                    });
-                }
-            }
-        }
-    };
 
     public static final int LOADING_LIST = 1001;
     public static final int LOADING_IMG = 1002;
@@ -460,6 +434,18 @@ public class GalleryActivity extends BaseActivity implements Initialization, OnS
         int s = url.lastIndexOf(".");
         String tmp = url.substring(0, s - 1);
         return tmp;
+    }
+
+    @Override
+    public void registerDestorySelfBroadcast() {
+        // TODO Auto-generated method stub
+
+    }
+
+    @Override
+    public void unRegisterDestorySelfBroadcast() {
+        // TODO Auto-generated method stub
+
     }
 
 }

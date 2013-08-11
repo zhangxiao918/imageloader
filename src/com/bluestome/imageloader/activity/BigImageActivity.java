@@ -6,8 +6,6 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Message;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
@@ -20,7 +18,6 @@ import com.bluestome.android.widget.ToastUtil;
 import com.bluestome.imageloader.R;
 
 import java.io.File;
-import java.lang.ref.WeakReference;
 import java.net.URLEncoder;
 
 public class BigImageActivity extends BaseActivity implements Initialization {
@@ -34,25 +31,7 @@ public class BigImageActivity extends BaseActivity implements Initialization {
     private ImageButton close;
     private ImageButton download;
     private ImageButton share;
-
-    private static class MyHandler extends Handler {
-        private WeakReference<BigImageActivity> mActivity;
-
-        MyHandler(BigImageActivity activity) {
-            mActivity = new WeakReference<BigImageActivity>(activity);
-        }
-
-        @Override
-        public void handleMessage(Message msg) {
-            BigImageActivity activity = mActivity.get();
-            if (null != activity) {
-                super.handleMessage(msg);
-            }
-        }
-
-    }
-
-    private MyHandler mHandler = new MyHandler(this);
+    private Bitmap currentBitMap;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -126,8 +105,8 @@ public class BigImageActivity extends BaseActivity implements Initialization {
                             }
                             if (null != body && body.length > 0) {
                                 Log.e(TAG, "大图大小:" + body.length);
-                                Bitmap bm = ImageUtils.decodeFile(body);
-                                bigImage.setImageBitmap(bm);
+                                currentBitMap = ImageUtils.decodeFile(body);
+                                bigImage.setImageBitmap(currentBitMap);
                                 bigImage
                                         .postDelayed(hiddenCloseRunnable,
                                                 5000L);
@@ -184,6 +163,10 @@ public class BigImageActivity extends BaseActivity implements Initialization {
         mHandler.post(new Runnable() {
             @Override
             public void run() {
+                if (!currentBitMap.isRecycled()) {
+                    currentBitMap.recycle();
+                    Log.e(TAG, "回收图片内存");
+                }
                 finish();
             }
         });
@@ -214,5 +197,17 @@ public class BigImageActivity extends BaseActivity implements Initialization {
                 }
             });
         }
+    }
+
+    @Override
+    public void registerDestorySelfBroadcast() {
+        // TODO Auto-generated method stub
+
+    }
+
+    @Override
+    public void unRegisterDestorySelfBroadcast() {
+        // TODO Auto-generated method stub
+
     }
 }
