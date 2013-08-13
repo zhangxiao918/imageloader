@@ -7,6 +7,7 @@ import android.database.Cursor;
 import android.util.Log;
 
 import com.bluestome.android.databases.dao.impl.BaseImpl;
+import com.bluestome.android.databases.depends.IDBCreateExec;
 import com.bluestome.android.databases.exception.DBException;
 import com.bluestome.android.utils.StringUtil;
 import com.bluestome.imageloader.db.dao.IArticleDao;
@@ -34,8 +35,8 @@ public class ArticleDaoImpl extends BaseImpl implements IArticleDao {
      * 
      * @param context
      */
-    public ArticleDaoImpl(Context context) {
-        super(context);
+    public ArticleDaoImpl(Context context, String dbName, IDBCreateExec exec) {
+        super(context, dbName, exec);
         // TODO Auto-generated constructor stub
     }
 

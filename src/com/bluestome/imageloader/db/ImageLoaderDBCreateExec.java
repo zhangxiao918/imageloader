@@ -59,4 +59,10 @@ public class ImageLoaderDBCreateExec implements IDBCreateExec {
         }
         Log.i(TAG, "数据库表结构初始化完成");
     }
+
+    @Override
+    public void upgradeDB(SQLiteDatabase db, int oldVersion, int newVersion) {
+        // TODO Auto-generated method stub
+
+    }
 }
