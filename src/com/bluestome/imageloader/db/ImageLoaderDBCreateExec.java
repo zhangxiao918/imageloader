@@ -63,6 +63,6 @@ public class ImageLoaderDBCreateExec implements IDBCreateExec {
     @Override
     public void upgradeDB(SQLiteDatabase db, int oldVersion, int newVersion) {
         // TODO Auto-generated method stub
-        Log.e(TAG, "upgrade db ,oldVersion:" + oldVersion + ",newVersion:" + newVersion);
+
     }
 }
