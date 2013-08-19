@@ -9,7 +9,7 @@ import android.os.Handler;
 import android.os.Message;
 
 import com.bluestome.android.activity.IBaseActivity;
-import com.bluestome.android.cache.MemcacheClient;
+import com.bluestome.android.cache.memcache.MemcacheClient;
 import com.bluestome.android.widget.TipDialog;
 import com.loopj.android.http.AsyncHttpClient;
 
