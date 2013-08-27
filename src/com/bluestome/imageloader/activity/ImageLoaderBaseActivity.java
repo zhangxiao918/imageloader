@@ -7,6 +7,7 @@ import android.os.Bundle;
 
 import com.bluestome.android.activity.BaseActivity;
 import com.bluestome.android.activity.IActivityInitialization;
+import com.bluestome.android.activity.IBroadcasts;
 import com.bluestome.android.cache.memcache.MemcacheClient;
 import com.bluestome.android.widget.TipDialog;
 import com.loopj.android.http.AsyncHttpClient;
@@ -17,7 +18,7 @@ import com.loopj.android.http.AsyncHttpClient;
  * @author bluestome
  */
 public abstract class ImageLoaderBaseActivity extends BaseActivity implements
-        IActivityInitialization {
+        IActivityInitialization, IBroadcasts {
 
     protected static AsyncHttpClient client = new AsyncHttpClient();
     protected MemcacheClient cacheClient;
@@ -27,6 +28,7 @@ public abstract class ImageLoaderBaseActivity extends BaseActivity implements
         // TODO Auto-generated method stub
         super.onCreate(savedInstanceState);
         init();
+        registerBroadcasts();
         showDialog(CACHE_INITING);
         mHandler.post(initCacheRunnable);
     }
@@ -35,7 +37,7 @@ public abstract class ImageLoaderBaseActivity extends BaseActivity implements
     protected void onDestroy() {
         // TODO Auto-generated method stub
         super.onDestroy();
-        unRegisterDestorySelfBroadcast();
+        unRegisterBroadcasts();
     }
 
     @Override

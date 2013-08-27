@@ -20,7 +20,7 @@ import com.bluestome.imageloader.R;
 import java.io.File;
 import java.net.URLEncoder;
 
-public class BigImageActivity extends BaseActivity implements Initialization {
+public class BigImageActivity extends ImageLoaderBaseActivity {
 
     private final String TAG = BigImageActivity.class.getCanonicalName();
 
@@ -37,10 +37,9 @@ public class BigImageActivity extends BaseActivity implements Initialization {
     protected void onCreate(Bundle savedInstanceState) {
         // TODO Auto-generated method stub
         super.onCreate(savedInstanceState);
-        initView();
-        init();
+        initViews();
         showDialog(DOWNLOAD_IMG);
-        initData();
+        initDatas();
     }
 
     @Override
@@ -63,7 +62,7 @@ public class BigImageActivity extends BaseActivity implements Initialization {
     }
 
     @Override
-    public void initView() {
+    public void initViews() {
         setContentView(R.layout.item_detail_image);
         bigImage = (ImageView) findViewById(R.id.gallery_image_id);
         close = (ImageButton) findViewById(R.id.gallery_image_close_id);
@@ -87,7 +86,7 @@ public class BigImageActivity extends BaseActivity implements Initialization {
     }
 
     @Override
-    public void initData() {
+    public void initDatas() {
         if (null != url && url.length() > 0) {
             currentImageUrl = url;
             new Thread(new Runnable() {
@@ -209,5 +208,27 @@ public class BigImageActivity extends BaseActivity implements Initialization {
     public void unRegisterDestorySelfBroadcast() {
         // TODO Auto-generated method stub
 
+    }
+
+    @Override
+    public void next() {
+        // TODO Auto-generated method stub
+
+    }
+
+    @Override
+    public void initNetworks() {
+        // TODO Auto-generated method stub
+
+    }
+
+    @Override
+    public void registerBroadcasts() {
+        registerDestorySelfBroadcast();
+    }
+
+    @Override
+    public void unRegisterBroadcasts() {
+        unRegisterDestorySelfBroadcast();
     }
 }

@@ -23,7 +23,6 @@ import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.bluestome.android.cache.MemcacheClient;
 import com.bluestome.android.utils.AsyncImageLoader;
 import com.bluestome.android.utils.DateUtils;
 import com.bluestome.android.utils.StringUtil;
@@ -32,6 +31,7 @@ import com.bluestome.android.widget.ToastUtil;
 import com.bluestome.imageloader.R;
 import com.bluestome.imageloader.biz.ParserBiz;
 import com.bluestome.imageloader.common.Constants;
+import com.bluestome.imageloader.db.dao.DaoFactory;
 import com.bluestome.imageloader.db.dao.IArticleDao;
 import com.bluestome.imageloader.domain.ArticleBean;
 import com.bluestome.imageloader.domain.ImageBean;
@@ -41,7 +41,7 @@ import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
 
-public class IndexActivity extends BaseActivity implements Initialization, OnScrollListener {
+public class IndexActivity extends ImageLoaderBaseActivity implements OnScrollListener {
 
     private static final String TAG = IndexActivity.class.getCanonicalName();
     private ListView indexImageList;
@@ -49,7 +49,6 @@ public class IndexActivity extends BaseActivity implements Initialization, OnScr
     private ItemAdapter adapter = new ItemAdapter(null);
 
     private int count = 1;
-    private MemcacheClient cacheClient;
 
     private IArticleDao articleDAO;
 
@@ -63,8 +62,6 @@ public class IndexActivity extends BaseActivity implements Initialization, OnScr
     protected void onCreate(Bundle savedInstanceState) {
         // TODO Auto-generated method stub
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_index);
-        pre();
     }
 
     private void pre() {
@@ -74,6 +71,8 @@ public class IndexActivity extends BaseActivity implements Initialization, OnScr
     protected void onDestroy() {
         // TODO Auto-generated method stub
         super.onDestroy();
+        int pid = android.os.Process.myPid();
+        android.os.Process.killProcess(pid);
     }
 
     @Override
@@ -84,20 +83,19 @@ public class IndexActivity extends BaseActivity implements Initialization, OnScr
 
     @Override
     public void onBackPressed() {
-        super.onBackPressed();
-        mHandler.post(new Runnable() {
+        showDialog(EXITING_APP);
+        mHandler.postDelayed(new Runnable() {
             public void run() {
-                // TODO 清理文件夹
-                int pid = android.os.Process.myPid();
-                android.os.Process.killProcess(pid);
+                removeDialog(EXITING_APP);
+                finish();
             }
-        });
-        finish();
+        }, 2000L);
     }
 
     public final int LOADING = 1001;
     public final int INIT_CACHE = 1002;
     public final int INIT_ACTIVITY = 1003;
+    public final int EXITING_APP = 1004;
 
     /*
      * (non-Javadoc)
@@ -114,6 +112,9 @@ public class IndexActivity extends BaseActivity implements Initialization, OnScr
             case INIT_ACTIVITY:
                 dialog = new TipDialog(this, getString(R.string.initializating));
                 return dialog;
+            case EXITING_APP:
+                dialog = new TipDialog(this, getString(R.string.exiting));
+                return dialog;
             default:
                 return super.onCreateDialog(id);
         }
@@ -121,10 +122,12 @@ public class IndexActivity extends BaseActivity implements Initialization, OnScr
 
     @Override
     public void init() {
+        articleDAO = DaoFactory.getInstance(this).getArticleDAO();
     }
 
     @Override
-    public void initView() {
+    public void initViews() {
+        setContentView(R.layout.activity_index);
         indexImageList = (ListView) findViewById(R.id.index_image_list_id);
         indexImageList.setOnItemClickListener(mIndexClickListener);
         indexImageList.setOnScrollListener(this);
@@ -134,12 +137,10 @@ public class IndexActivity extends BaseActivity implements Initialization, OnScr
                 View img = view
                         .findViewById(R.id.item_image_id);
                 if (null != img && img instanceof ImageView) {
-                    Log.e(TAG, "准备回收图片内存");
                     ImageView i = (ImageView) img;
                     Bitmap bitmap = ((BitmapDrawable) i.getDrawable()).getBitmap();
                     if (!bitmap.isMutable() && !bitmap.isRecycled()) {
                         // bitmap.recycle();
-                        Log.e(TAG, "图片内存未回收,执行回收内存");
                     }
                 }
             }
@@ -167,7 +168,7 @@ public class IndexActivity extends BaseActivity implements Initialization, OnScr
     };
 
     @Override
-    public void initData() {
+    public void initDatas() {
         showDialog(LOADING);
         final String url = Constants.URL + "/index/" + (count++) + ".html";
         client.get(this, url, null,
@@ -362,7 +363,7 @@ public class IndexActivity extends BaseActivity implements Initialization, OnScr
                     mHandler.postDelayed(new Runnable() {
                         @Override
                         public void run() {
-                            initData();
+                            initDatas();
                         }
                     }, 1 * 250L);
                 }
@@ -442,5 +443,27 @@ public class IndexActivity extends BaseActivity implements Initialization, OnScr
             return lst3;
         }
         return null;
+    }
+
+    @Override
+    public void next() {
+        initViews();
+        initDatas();
+    }
+
+    @Override
+    public void initNetworks() {
+        // TODO Auto-generated method stub
+
+    }
+
+    @Override
+    public void registerBroadcasts() {
+        registerDestorySelfBroadcast();
+    }
+
+    @Override
+    public void unRegisterBroadcasts() {
+        unRegisterDestorySelfBroadcast();
     }
 }

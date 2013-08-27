@@ -21,7 +21,7 @@ import com.bluestome.imageloader.common.Constants;
  * 
  * @author bluestome
  */
-public class LauncherActivity extends BaseActivity implements Initialization {
+public class LauncherActivity extends ImageLoaderBaseActivity {
 
     private static final String TAG = LauncherActivity.class.getCanonicalName();
     private String body;
@@ -30,9 +30,7 @@ public class LauncherActivity extends BaseActivity implements Initialization {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        pre();
-        initView();
-        init();
+        initViews();
     }
 
     @Override
@@ -73,6 +71,14 @@ public class LauncherActivity extends BaseActivity implements Initialization {
 
     @Override
     public void init() {
+        // 详见StrictMode文档
+        StrictMode.setThreadPolicy(new StrictMode.ThreadPolicy.Builder()
+                .detectDiskReads()
+                .detectDiskWrites()
+                .detectNetwork() // or .detectAll() for all detectable problems
+                .penaltyLog()
+                .build());
+
     }
 
     private Runnable mRunnable = new Runnable() {
@@ -90,21 +96,14 @@ public class LauncherActivity extends BaseActivity implements Initialization {
     };
 
     @Override
-    public void initView() {
+    public void initViews() {
         setContentView(R.layout.activity_launch);
+
     }
 
     @Override
-    public void initData() {
-    }
-
-    private void pre() { // 详见StrictMode文档
-        StrictMode.setThreadPolicy(new StrictMode.ThreadPolicy.Builder()
-                .detectDiskReads()
-                .detectDiskWrites()
-                .detectNetwork() // or .detectAll() for all detectable problems
-                .penaltyLog()
-                .build());
+    public void initDatas() {
+        next();
     }
 
     @Override
@@ -136,6 +135,27 @@ public class LauncherActivity extends BaseActivity implements Initialization {
             unregisterReceiver(mReceiver);
             mReceiver = null;
         }
+    }
+
+    @Override
+    public void next() {
+        mHandler.postDelayed(mRunnable, 2000L);
+    }
+
+    @Override
+    public void initNetworks() {
+        // TODO Auto-generated method stub
+
+    }
+
+    @Override
+    public void registerBroadcasts() {
+        registerDestorySelfBroadcast();
+    }
+
+    @Override
+    public void unRegisterBroadcasts() {
+        unRegisterDestorySelfBroadcast();
     }
 
 }

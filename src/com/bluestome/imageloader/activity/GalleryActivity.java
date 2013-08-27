@@ -26,6 +26,7 @@ import android.widget.Toast;
 import com.bluestome.android.utils.AsyncImageLoader;
 import com.bluestome.android.utils.StringUtil;
 import com.bluestome.android.widget.TipDialog;
+import com.bluestome.android.widget.ToastUtil;
 import com.bluestome.imageloader.R;
 import com.bluestome.imageloader.biz.ParserBiz;
 import com.bluestome.imageloader.common.Constants;
@@ -36,7 +37,7 @@ import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
 
-public class GalleryActivity extends BaseActivity implements Initialization, OnScrollListener {
+public class GalleryActivity extends ImageLoaderBaseActivity implements OnScrollListener {
 
     private static final String TAG = GalleryActivity.class.getCanonicalName();
     private ImageAdapter adapter = new ImageAdapter(null);
@@ -58,7 +59,7 @@ public class GalleryActivity extends BaseActivity implements Initialization, OnS
     }
 
     @Override
-    public void initView() {
+    public void initViews() {
         setContentView(R.layout.activity_gallery);
         gridView = (ListView) findViewById(R.id.gallery);
         gridView.setAdapter(adapter);
@@ -98,7 +99,7 @@ public class GalleryActivity extends BaseActivity implements Initialization, OnS
     }
 
     @Override
-    public void initData() {
+    public void initDatas() {
         // TODO Auto-generated method stub
         if (!StringUtil.isBlank(link)) {
             requestData(link, false);
@@ -109,9 +110,6 @@ public class GalleryActivity extends BaseActivity implements Initialization, OnS
     protected void onCreate(Bundle savedInstanceState) {
         // TODO Auto-generated method stub
         super.onCreate(savedInstanceState);
-        init();
-        initView();
-        initData();
     }
 
     public static final int LOADING_LIST = 1001;
@@ -337,7 +335,26 @@ public class GalleryActivity extends BaseActivity implements Initialization, OnS
             client.get(url, new AsyncHttpResponseHandler() {
                 @Override
                 public void onSuccess(final int statusCode, final String content) {
-                    Log.e(TAG, "获取内容成功,statusCode" + statusCode);
+                    Log.e(TAG,
+                            "获取内容成功,statusCode"
+                                    + statusCode
+                                    + ",响应内容："
+                                    + (StringUtil.isBlank(content) ? "空" : "不为空,长度为:"
+                                            + content.length()));
+                    if (null == content || content.length() < 20) {
+                        mHandler.post(new Runnable() {
+
+                            @Override
+                            public void run() {
+                                mBusy = true;
+                                mHandler.removeCallbacks(cancelGetNextImageListRunnable);
+                                removeDialog(LOADING_IMG);
+                                ToastUtil.resultNotify(GalleryActivity.this, "已经是最后一页");
+                                gridView.setEnabled(true);
+                            }
+                        });
+                        return;
+                    }
                     new Thread(new Runnable() {
                         @Override
                         public void run() {
@@ -375,7 +392,6 @@ public class GalleryActivity extends BaseActivity implements Initialization, OnS
                                         }
                                         Log.e(TAG, "图片最新位置:" + pos);
                                         gridView.setSelection(pos);
-
                                     }
                                 }
                             });
@@ -389,9 +405,7 @@ public class GalleryActivity extends BaseActivity implements Initialization, OnS
                     gridView.setEnabled(true);
                     mHandler.removeCallbacks(getNextImageListRunnable);
                     removeDialog(LOADING_IMG);
-                    Toast.makeText(GalleryActivity.this, "分页异常:" + error.getMessage(),
-                            Toast.LENGTH_LONG)
-                            .show();
+                    ToastUtil.resultNotify(GalleryActivity.this, "分页异常:" + error.getMessage());
                 }
             });
         }
@@ -446,6 +460,28 @@ public class GalleryActivity extends BaseActivity implements Initialization, OnS
     public void unRegisterDestorySelfBroadcast() {
         // TODO Auto-generated method stub
 
+    }
+
+    @Override
+    public void next() {
+        initViews();
+        initDatas();
+    }
+
+    @Override
+    public void initNetworks() {
+        // TODO Auto-generated method stub
+
+    }
+
+    @Override
+    public void registerBroadcasts() {
+        registerDestorySelfBroadcast();
+    }
+
+    @Override
+    public void unRegisterBroadcasts() {
+        unRegisterDestorySelfBroadcast();
     }
 
 }
